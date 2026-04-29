@@ -111,9 +111,17 @@ def eposta_gonder(alici_email: str, alici_ad: str, konu: str, icerik_html: str) 
         html_part = MIMEText(icerik_html, "html", "utf-8")
         msg.attach(html_part)
 
-        with smtplib.SMTP_SSL(cfg["smtp_host"], int(cfg.get("smtp_port", 465))) as server:
-            server.login(cfg["gonderici_email"], cfg["smtp_sifre"])
-            server.sendmail(cfg["gonderici_email"], alici_email, msg.as_string())
+        port = int(cfg.get("smtp_port", 587))
+        if port == 465:
+            with smtplib.SMTP_SSL(cfg["smtp_host"], port) as server:
+                server.login(cfg["gonderici_email"], cfg["smtp_sifre"])
+                server.sendmail(cfg["gonderici_email"], alici_email, msg.as_string())
+        else:
+            with smtplib.SMTP(cfg["smtp_host"], port) as server:
+                server.ehlo()
+                server.starttls()
+                server.login(cfg["gonderici_email"], cfg["smtp_sifre"])
+                server.sendmail(cfg["gonderici_email"], alici_email, msg.as_string())
         return True
     except Exception as e:
         print(f"E-posta gönderilemedi: {e}")

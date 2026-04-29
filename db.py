@@ -82,6 +82,17 @@ def init_db():
         )
     """)
 
+    # ── OTURUMLAR ──────────────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS wellness_sessions (
+            id           VARCHAR(64) PRIMARY KEY,
+            user_id      INT NOT NULL,
+            son_aktivite DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            olusturma    DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES wellness_users(id) ON DELETE CASCADE
+        )
+    """)
+
     conn.commit()
     cursor.close()
     conn.close()

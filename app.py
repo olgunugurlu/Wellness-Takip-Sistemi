@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 from db             import get_connection, init_db
-from auth           import register_user, login_user, set_session, logout, is_logged_in, is_admin
+from auth           import register_user, login_user, set_session, logout, is_logged_in, is_admin, restore_session
 from claude_service import stream_analysis, parse_response, render_supplement_cards, GOALS, SYMPTOMS, SUPPS, LABS
 from admin          import show_admin_panel
 from ethics         import kullanim_sartlari_goster, risk_analizi, risk_uyarisi_goster, analiz_dil_uyarisi, YASAL_UYARI_HTML
@@ -57,6 +57,10 @@ try:
 except Exception as e:
     st.error(f"Veritabanı başlatılamadı: {e}")
     st.stop()
+
+# ── OTURUMU GERI YUKLE (sayfa yenilenince) ───────────────────────────────────
+if not st.session_state.get("logged_in", False):
+    restore_session()
 
 # ── SESSION STATE ─────────────────────────────────────────────────────────────
 defaults = {
