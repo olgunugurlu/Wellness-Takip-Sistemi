@@ -101,6 +101,7 @@ def eposta_gonder(alici_email: str, alici_ad: str, konu: str, icerik_html: str) 
     try:
         cfg = st.secrets.get("email", {})
         if not cfg:
+            st.warning("⚠️ E-posta ayarları (secrets.toml [email]) eksik.")
             return False
 
         msg = MIMEMultipart("alternative")
@@ -123,8 +124,17 @@ def eposta_gonder(alici_email: str, alici_ad: str, konu: str, icerik_html: str) 
                 server.login(cfg["gonderici_email"], cfg["smtp_sifre"])
                 server.sendmail(cfg["gonderici_email"], alici_email, msg.as_string())
         return True
+    except smtplib.SMTPAuthenticationError:
+        st.error("❌ E-posta hatası: Kullanıcı adı veya şifre hatalı. Hotmail için uygulama şifresi gerekli.")
+        return False
+    except smtplib.SMTPConnectError:
+        st.error("❌ E-posta hatası: SMTP sunucusuna bağlanılamadı. Host/port bilgilerini kontrol edin.")
+        return False
+    except smtplib.SMTPRecipientsRefused:
+        st.error(f"❌ E-posta hatası: Alıcı adresi reddedildi: {alici_email}")
+        return False
     except Exception as e:
-        print(f"E-posta gönderilemedi: {e}")
+        st.error(f"❌ E-posta gönderilemedi: {e}")
         return False
 
 

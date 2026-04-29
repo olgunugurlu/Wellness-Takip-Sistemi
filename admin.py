@@ -65,12 +65,13 @@ def show_admin_panel():
 
     st.divider()
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 İstatistikler",
         "⏳ Bekleyen Üyeler",
         "👥 Tüm Üyeler",
         "🔬 Analiz Kuyruğu",
         "📋 Tüm Analizler",
+        "📧 E-posta Test",
     ])
 
     # ── TAB 1: İSTATİSTİKLER ─────────────────────────────────────────────────
@@ -463,6 +464,59 @@ def show_admin_panel():
                         st.warning("Bulunamadı.")
             else:
                 st.info("Henüz analiz yok.")
+        except Exception as e:
+            st.error(f"Hata: {e}")
+
+
+    # ── TAB 6: E-POSTA TEST ──────────────────────────────────────────────────
+    with tab6:
+        st.markdown("#### 📧 E-posta Bağlantı Testi")
+        st.caption("Mail ayarlarınızın doğru çalışıp çalışmadığını buradan test edebilirsiniz.")
+
+        try:
+            cfg = st.secrets.get("email", {})
+            if cfg:
+                st.success(f"✅ E-posta ayarları yüklendi")
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.code(f"""
+Host : {cfg.get('smtp_host','?')}
+Port : {cfg.get('smtp_port','?')}
+Gönderici: {cfg.get('gonderici_email','?')}
+                    """)
+                with c2:
+                    test_alici = st.text_input("Test e-postası gönderilecek adres",
+                                               value=cfg.get('gonderici_email',''),
+                                               key="test_mail_alici")
+                    if st.button("📨 Test Maili Gönder", use_container_width=True, type="primary"):
+                        from notifications import eposta_gonder, eposta_sablonu
+                        sonuc = eposta_gonder(
+                            test_alici, "Test Kullanıcı",
+                            "Wellness Sistemi — Test E-postası",
+                            eposta_sablonu("Test Kullanıcı", "E-posta Testi ✓",
+                                "Bu e-posta Wellness Admin panelinden gönderilmiş bir test mesajıdır. "
+                                "E-posta sisteminiz başarıyla çalışıyor!"
+                            )
+                        )
+                        if sonuc:
+                            st.success(f"✅ Test maili başarıyla gönderildi → {test_alici}")
+            else:
+                st.error("❌ E-posta ayarları bulunamadı.")
+                st.info("""
+Streamlit Cloud → Settings → Secrets bölümüne şunu ekleyin:
+
+```toml
+[email]
+smtp_host       = "smtp-mail.outlook.com"
+smtp_port       = 587
+gonderici_email = "o_ugurlu@hotmail.com"
+smtp_sifre      = "UYGULAMA_SIFRENIZ"
+gonderici_ad    = "Wellness Analiz"
+```
+
+**Hotmail için uygulama şifresi:**
+outlook.com → Güvenlik → İki adımlı doğrulama (açık olmalı) → Uygulama şifreleri → Yeni oluştur
+                """)
         except Exception as e:
             st.error(f"Hata: {e}")
 
