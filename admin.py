@@ -38,7 +38,22 @@ def kullanici_getir(user_id: int) -> dict | None:
 
 # ── ANA PANEL ────────────────────────────────────────────────────────────────
 def show_admin_panel():
-    st.markdown("## 🛡️ Admin Paneli")
+    # ── ÜST MENÜ ─────────────────────────────────────────────────────────────
+    col_baslik, col_butonlar = st.columns([3, 1])
+    with col_baslik:
+        st.markdown("## 🛡️ Admin Paneli")
+    with col_butonlar:
+        st.markdown("<div style='margin-top:8px'>", unsafe_allow_html=True)
+        if st.button("📋 Forma Geç", use_container_width=True):
+            st.session_state.page = "app"
+            st.rerun()
+        if st.button("🚪 Çıkış Yap", use_container_width=True):
+            from auth import logout
+            logout()
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.divider()
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 İstatistikler",
