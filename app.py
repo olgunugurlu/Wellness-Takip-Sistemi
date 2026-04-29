@@ -58,7 +58,7 @@ except Exception as e:
     st.error(f"Veritabanı başlatılamadı: {e}")
     st.stop()
 
-# ── OTURUMU GERI YUKLE (sayfa yenilenince) ───────────────────────────────────
+# ── OTURUMU GERİ YÜKLE (sayfa yenilenince çalışır) ───────────────────────────
 if not st.session_state.get("logged_in", False):
     restore_session()
 
