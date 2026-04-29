@@ -143,6 +143,18 @@ def get_analiz_metni(analiz_id:int) -> str | None:
     return row
 
 
+def render_analiz_metni(metin: str):
+    """Uzun analiz metnini ## başlıklarına bölerek ayrı ayrı render eder.
+    Böylece Streamlit'in tek markdown limitini aşmaz."""
+    import re
+    # ## başlıklarına göre böl
+    bolumler = re.split(r'(?=^## )', metin, flags=re.MULTILINE)
+    for bolum in bolumler:
+        bolum = bolum.strip()
+        if bolum:
+            st.markdown(bolum)
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # GİRİŞ YAPILMAMIŞ
 # ════════════════════════════════════════════════════════════════════════════
@@ -293,7 +305,7 @@ else:
             </div>
             """, unsafe_allow_html=True)
             analiz_metni, takviye_data = parse_response(row["metin"])
-            st.markdown(analiz_metni)
+            render_analiz_metni(analiz_metni)
             st.divider()
             if takviye_data:
                 render_supplement_cards(takviye_data)

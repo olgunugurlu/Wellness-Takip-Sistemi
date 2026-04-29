@@ -4,11 +4,21 @@ Sekmeler: İstatistikler | Bekleyen Üyeler | Tüm Üyeler | Analiz Kuyruğu | T
 """
 import streamlit as st
 import json
+import re
 from datetime import datetime
 from db import get_connection
 from notifications import (
     kayit_onay_bildirimi, kayit_red_bildirimi, analiz_hazir_bildirimi
 )
+
+
+def _render_metin(metin: str):
+    """Uzun analiz metnini ## başlıklarına bölerek ayrı ayrı render eder."""
+    bolumler = re.split(r'(?=^## )', metin, flags=re.MULTILINE)
+    for bolum in bolumler:
+        bolum = bolum.strip()
+        if bolum:
+            st.markdown(bolum)
 
 
 # ── YARDIMCI ─────────────────────────────────────────────────────────────────
@@ -448,7 +458,7 @@ def show_admin_panel():
                     row = cursor.fetchone()
                     conn.close()
                     if row:
-                        st.markdown(row["metin"])
+                        _render_metin(row["metin"])
                     else:
                         st.warning("Bulunamadı.")
             else:
