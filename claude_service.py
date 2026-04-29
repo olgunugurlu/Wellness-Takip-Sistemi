@@ -136,16 +136,53 @@ Analiz metninin HEMEN ARKASINA bu JSON bloğunu ekle. Başka açıklama ekleme.
 
 
 def parse_response(full_text: str) -> tuple:
-    """Analiz metnini ve JSON takviye kartlarını ayırır."""
+    """Analiz metnini ve JSON takviye kartlarını ayırır.
+    
+    Claude bazen JSON bloğunu farklı formatlarda döner:
+    - ```json ... ```
+    - ## BÖLÜM 2 başlığından sonra
+    - Düz { ... } olarak
+    """
+    # 1. Standart ```json ... ``` bloğu
     json_match = re.search(r'```json\s*(.*?)\s*```', full_text, re.DOTALL)
     if json_match:
         analiz_metni = full_text[:json_match.start()].strip()
+        # BÖLÜM 2 başlığını da temizle
+        analiz_metni = re.sub(r'## BÖLÜM 2:.*$', '', analiz_metni, flags=re.MULTILINE).strip()
         try:
             takviye_data = json.loads(json_match.group(1))
             return analiz_metni, takviye_data
         except json.JSONDecodeError:
-            return full_text, None
-    return full_text, None
+            pass
+
+    # 2. Sadece ``` ... ``` (json etiketi olmadan)
+    json_match2 = re.search(r'```\s*(\{.*?\})\s*```', full_text, re.DOTALL)
+    if json_match2:
+        analiz_metni = full_text[:json_match2.start()].strip()
+        analiz_metni = re.sub(r'## BÖLÜM 2:.*$', '', analiz_metni, flags=re.MULTILINE).strip()
+        try:
+            takviye_data = json.loads(json_match2.group(1))
+            return analiz_metni, takviye_data
+        except json.JSONDecodeError:
+            pass
+
+    # 3. ## BÖLÜM 2 başlığından sonra JSON ara
+    bolum2_match = re.search(r'## BÖLÜM 2.*?$(.*)', full_text, re.DOTALL | re.MULTILINE)
+    if bolum2_match:
+        bolum2_icerik = bolum2_match.group(1).strip()
+        analiz_metni = full_text[:bolum2_match.start()].strip()
+        # JSON nesnesini bul
+        json_obj_match = re.search(r'(\{.*\})', bolum2_icerik, re.DOTALL)
+        if json_obj_match:
+            try:
+                takviye_data = json.loads(json_obj_match.group(1))
+                return analiz_metni, takviye_data
+            except json.JSONDecodeError:
+                pass
+
+    # 4. Hiçbiri bulunamazsa — BÖLÜM 2 başlığını en azından metinden temizle
+    temiz_metin = re.sub(r'## BÖLÜM 2:.*', '', full_text, flags=re.DOTALL).strip()
+    return temiz_metin, None
 
 
 def stream_analysis(data: dict):
