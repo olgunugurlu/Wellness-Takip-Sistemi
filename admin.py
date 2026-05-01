@@ -534,6 +534,39 @@ def show_admin_panel():
                             render_supplement_cards(takviye_data)
                         else:
                             st.info("Takviye kartları bulunamadı.")
+
+                        # PDF indirme butonu
+                        st.divider()
+                        try:
+                            from pdf_export import analiz_pdf_olustur
+                            # Kullanıcı adını bul
+                            conn2 = get_connection()
+                            cur2 = conn2.cursor(dictionary=True)
+                            cur2.execute("""
+                                SELECT u.ad_soyad FROM wellness_analyses a
+                                JOIN wellness_users u ON u.id = a.user_id
+                                WHERE a.id = %s
+                            """, (aid,))
+                            ur = cur2.fetchone()
+                            cur2.close(); conn2.close()
+                            kullanici_adi = ur["ad_soyad"] if ur else "Kullanici"
+
+                            pdf_bytes = analiz_pdf_olustur(
+                                analiz_metni=metin,
+                                analiz_json_str=analiz_json_str,
+                                kullanici_adi=kullanici_adi,
+                            )
+                            dosya_adi = f"wellness_{kullanici_adi.replace(' ','_').lower()}_{aid}.pdf"
+                            st.download_button(
+                                label="📄 PDF Olarak İndir",
+                                data=pdf_bytes,
+                                file_name=dosya_adi,
+                                mime="application/pdf",
+                                use_container_width=True,
+                                type="primary",
+                            )
+                        except Exception as e:
+                            st.error(f"PDF oluşturulamadı: {e}")
                     else:
                         st.warning("Bulunamadı.")
             else:
