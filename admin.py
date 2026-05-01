@@ -492,18 +492,48 @@ def show_admin_panel():
                 aid = st.number_input("Analiz ID (detay)", min_value=1, step=1)
                 if st.button("🔍 Analizi Göster"):
                     conn = get_connection()
-                    cursor = conn.cursor(dictionary=True)
+                    cursor = conn.cursor(dictionary=True, buffered=True)
                     cursor.execute("""
-                        SELECT COALESCE(admin_duzenleme, analiz_metni) AS metin
+                        SELECT COALESCE(admin_duzenleme, analiz_metni) AS metin,
+                               analiz_json
                         FROM wellness_analyses WHERE id=%s
                     """, (aid,))
                     row = cursor.fetchone()
                     conn.close()
                     if row:
-                        metin = row["metin"]
+                        metin = row.get("metin", "")
+                        analiz_json_str = row.get("analiz_json")
                         if isinstance(metin, (bytes, bytearray)):
                             metin = metin.decode("utf-8", errors="replace")
+                        if analiz_json_str and isinstance(analiz_json_str, (bytes, bytearray)):
+                            analiz_json_str = analiz_json_str.decode("utf-8", errors="replace")
+
+                        # Analiz metnini göster
                         _render_metin(metin)
+                        st.divider()
+
+                        # Takviye kartlarını göster
+                        takviye_data = None
+                        if analiz_json_str:
+                            try:
+                                from claude_service import _normalize_json
+                                takviye_data = _normalize_json(json.loads(analiz_json_str))
+                            except Exception as e:
+                                st.warning(f"JSON parse hatası: {e}")
+
+                        if takviye_data is None:
+                            # Metinden parse etmeyi dene
+                            try:
+                                from claude_service import parse_response
+                                _, takviye_data = parse_response(metin)
+                            except Exception:
+                                pass
+
+                        if takviye_data:
+                            from claude_service import render_supplement_cards
+                            render_supplement_cards(takviye_data)
+                        else:
+                            st.info("Takviye kartları bulunamadı.")
                     else:
                         st.warning("Bulunamadı.")
             else:
