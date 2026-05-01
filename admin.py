@@ -529,18 +529,11 @@ def _tum_uyeler_listesi():
 
             col1, col2, col3, col4, col5 = st.columns([3, 1.5, 1, 1, 1])
             with col1:
-                rol_badge = ' <span style="color:#d4a847;font-size:11px">👑 Admin</span>' if u["rol"]=="admin" else ""
-                st.markdown(f"""
-<div style="padding:4px 0">
-  <span style="font-size:14px;font-weight:600;color:#e6edf3">{u['ad_soyad']}</span>{rol_badge}
-  <br><span style="font-size:12px;color:#7d8590">{u['email']}</span>
-  <br><span style="font-size:11px;color:#484f58">📅 {tarih} · 📋 {u['form_sayi']} form · 🔬 {u['analiz_sayi']} analiz</span>
-</div>""", unsafe_allow_html=True)
+                rol_tag = " 👑" if u["rol"] == "admin" else ""
+                st.markdown(f"**{u['ad_soyad']}**{rol_tag}")
+                st.caption(f"{u['email']} · 📅 {tarih} · 📋 {u['form_sayi']} form · 🔬 {u['analiz_sayi']} analiz")
             with col2:
-                st.markdown(f"""
-<span style="border:1px solid {renk};color:{renk};font-size:11px;font-weight:600;
-             padding:3px 10px;border-radius:20px">{icon} {u['durum']}</span>
-""", unsafe_allow_html=True)
+                st.caption(f"{icon} {u['durum']}")
             with col3:
                 if u["durum"] != "aktif" and st.button("✅", key=f"uye_aktif_{u['id']}", help="Aktif et"):
                     _durum_guncelle(u["id"], "aktif")
@@ -583,33 +576,19 @@ def _kullanici_detay_goster(uid: int):
             return
 
         # ── PROFİL KARTI ─────────────────────────────────────────────────────
-        durum_renk_map = {
-            "aktif":"#3fb950","beklemede":"#d4a847",
-            "pasif":"#7d8590","engelli":"#f85149"
+        durum_etiket = {
+            "aktif": "✅ Aktif", "beklemede": "⏳ Beklemede",
+            "pasif": "⏸️ Pasif", "engelli": "🚫 Engelli"
         }
-        renk = durum_renk_map.get(u["durum"],"#7d8590")
+        rol_etiket = "👑 Admin" if u["rol"] == "admin" else "👤 Kullanıcı"
 
-        st.markdown(f"""
-<div style="background:#161b22;border:1px solid #30363d;border-radius:14px;padding:20px 24px;margin-bottom:16px">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
-    <div>
-      <div style="font-size:22px;font-weight:700;color:#e6edf3">{u['ad_soyad']}
-        {'<span style="font-size:13px;color:#d4a847;margin-left:8px">👑 Admin</span>' if u['rol']=='admin' else ''}
-      </div>
-      <div style="font-size:14px;color:#7d8590;margin-top:4px">{u['email']}</div>
-      <div style="margin-top:10px">
-        <span style="border:1px solid {renk};color:{renk};font-size:12px;font-weight:600;padding:3px 12px;border-radius:20px">
-          {u['durum']}
-        </span>
-        <span style="font-size:12px;color:#484f58;margin-left:12px">
-          📅 Kayıt: {str(u['kayit_tarihi'])[:10]}
-        </span>
-        {f'<span style="font-size:12px;color:#484f58;margin-left:12px">✅ Onay: {str(u["onay_tarihi"])[:10]}</span>' if u.get("onay_tarihi") else ''}
-      </div>
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+        st.markdown(f"## {u['ad_soyad']}  {rol_etiket}")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("E-posta", u["email"])
+        c2.metric("Durum", durum_etiket.get(u["durum"], u["durum"]))
+        c3.metric("Kayıt Tarihi", str(u["kayit_tarihi"])[:10])
+        if u.get("onay_tarihi"):
+            st.caption(f"✅ Admin onay tarihi: {str(u['onay_tarihi'])[:10]}")
 
         # ── HIZLI İŞLEMLER ────────────────────────────────────────────────────
         st.markdown("**Kullanıcı İşlemleri**")
@@ -673,16 +652,10 @@ def _kullanici_detay_goster(uid: int):
 
                 c1, c2, c3, c4 = st.columns([4, 2, 0.5, 1])
                 with c1:
-                    st.markdown(f"""
-<div style="padding:4px 0">
-  <span style="font-size:13px;color:#e6edf3">{str(a.get('ozet',''))[:80]}...</span>
-  <br><span style="font-size:11px;color:#484f58">📅 {tarih} · 📨 {gonder}</span>
-</div>""", unsafe_allow_html=True)
+                    st.markdown(f"**{str(a.get('ozet',''))[:80]}...**")
+                    st.caption(f"📅 {tarih} · 📨 {gonder}")
                 with c2:
-                    st.markdown(f"""
-<span style="border:1px solid {ar};color:{ar};font-size:11px;
-             padding:3px 10px;border-radius:20px">{icon} {a['durum'].replace('_',' ')}</span>
-""", unsafe_allow_html=True)
+                    st.caption(f"{icon} {a['durum'].replace('_',' ')}")
                 with c3:
                     st.caption(jbadge)
                 with c4:
