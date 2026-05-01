@@ -13,12 +13,33 @@ from notifications import (
 
 
 def _render_metin(metin: str):
-    """Uzun analiz metnini ## başlıklarına bölerek ayrı ayrı render eder."""
-    bolumler = re.split(r'(?=^## )', metin, flags=re.MULTILINE)
+    """Uzun analiz metnini bölümlere ayırarak render eder."""
+    # JSON bloğunu ve BÖLÜM 2 başlığını temizle
+    metin = re.sub(r'## BÖLÜM 2.*', '', metin, flags=re.DOTALL).strip()
+    metin = re.sub(r'```json.*?```', '', metin, flags=re.DOTALL).strip()
+
+    bolumler = re.split(r'(?=^#{2,3} )', metin, flags=re.MULTILINE)
     for bolum in bolumler:
         bolum = bolum.strip()
-        if bolum:
-            st.markdown(bolum)
+        if not bolum:
+            continue
+        with st.container():
+            if len(bolum) > 4000:
+                satirlar = bolum.split('\n')
+                parca = []
+                uzunluk = 0
+                for satir in satirlar:
+                    parca.append(satir)
+                    uzunluk += len(satir)
+                    if uzunluk > 3000:
+                        if '\n'.join(parca).strip():
+                            st.markdown('\n'.join(parca))
+                        parca = []
+                        uzunluk = 0
+                if parca and '\n'.join(parca).strip():
+                    st.markdown('\n'.join(parca))
+            else:
+                st.markdown(bolum)
 
 
 # ── YARDIMCI ─────────────────────────────────────────────────────────────────

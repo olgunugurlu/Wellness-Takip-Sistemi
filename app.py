@@ -144,15 +144,43 @@ def get_analiz_metni(analiz_id:int) -> str | None:
 
 
 def render_analiz_metni(metin: str):
-    """Uzun analiz metnini ## başlıklarına bölerek ayrı ayrı render eder.
-    Böylece Streamlit'in tek markdown limitini aşmaz."""
+    """Uzun analiz metnini bölümlere ayırarak render eder.
+    Streamlit tek seferinde çok uzun markdown kesebilir — bu fonksiyon bunu önler."""
     import re
-    # ## başlıklarına göre böl
-    bolumler = re.split(r'(?=^## )', metin, flags=re.MULTILINE)
+
+    # Önce BÖLÜM 2 ve JSON bloğunu temizle (parse_response zaten ayırıyor ama emin olmak için)
+    metin = re.sub(r'## BÖLÜM 2.*', '', metin, flags=re.DOTALL).strip()
+    metin = re.sub(r'```json.*?```', '', metin, flags=re.DOTALL).strip()
+
+    # ## ve ### başlıklarına göre böl
+    bolumler = re.split(r'(?=^#{2,3} )', metin, flags=re.MULTILINE)
+
     for bolum in bolumler:
         bolum = bolum.strip()
-        if bolum:
-            st.markdown(bolum)
+        if not bolum:
+            continue
+        # Her bölümü ayrı container içinde render et
+        with st.container():
+            # 4000 karakterden uzunsa tekrar böl (satır bazında)
+            if len(bolum) > 4000:
+                satirlar = bolum.split('\n')
+                parcalar = []
+                parca = []
+                uzunluk = 0
+                for satir in satirlar:
+                    parca.append(satir)
+                    uzunluk += len(satir)
+                    if uzunluk > 3000:
+                        parcalar.append('\n'.join(parca))
+                        parca = []
+                        uzunluk = 0
+                if parca:
+                    parcalar.append('\n'.join(parca))
+                for p in parcalar:
+                    if p.strip():
+                        st.markdown(p)
+            else:
+                st.markdown(bolum)
 
 
 # ════════════════════════════════════════════════════════════════════════════
