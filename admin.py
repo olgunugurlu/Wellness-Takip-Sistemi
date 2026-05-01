@@ -227,76 +227,13 @@ def show_admin_panel():
 
     # ── TAB 3: TÜM ÜYELER ────────────────────────────────────────────────────
     with tab3:
-        try:
-            conn = get_connection()
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute("""
-                SELECT u.id, u.ad_soyad, u.email, u.durum, u.rol,
-                       u.kayit_tarihi,
-                       COUNT(DISTINCT f.id) AS form_sayi,
-                       COUNT(DISTINCT a.id) AS analiz_sayi
-                FROM wellness_users u
-                LEFT JOIN wellness_forms    f ON f.user_id = u.id
-                LEFT JOIN wellness_analyses a ON a.user_id = u.id
-                GROUP BY u.id
-                ORDER BY u.kayit_tarihi DESC
-            """)
-            users = cursor.fetchall()
-            cursor.close(); conn.close()
+        if "aktif_kullanici_id" not in st.session_state:
+            st.session_state.aktif_kullanici_id = None
 
-            if not users:
-                st.info("Henüz üye yok.")
-            else:
-                import pandas as pd
-                df = pd.DataFrame(users)
-                df["kayit_tarihi"] = df["kayit_tarihi"].astype(str).str[:16]
-                df["durum"] = df["durum"].apply(lambda x: f"{durum_renk(x)} {x}")
-                df.columns = ["ID","Ad Soyad","E-posta","Durum","Rol",
-                              "Kayıt","Form","Analiz"]
-                st.dataframe(df, use_container_width=True, hide_index=True)
-
-                st.divider()
-                st.markdown("#### Üye İşlemleri")
-                uid = st.number_input("Kullanıcı ID", min_value=1, step=1, key="uid_islem")
-                c1, c2, c3, c4 = st.columns(4)
-                with c1:
-                    if st.button("✅ Aktif Et", use_container_width=True):
-                        conn = get_connection()
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "UPDATE wellness_users SET durum='aktif' WHERE id=%s", (uid,)
-                        )
-                        conn.commit(); conn.close()
-                        st.success("Aktif edildi."); st.rerun()
-                with c2:
-                    if st.button("⏸️ Pasif Et", use_container_width=True):
-                        conn = get_connection()
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "UPDATE wellness_users SET durum='pasif' WHERE id=%s", (uid,)
-                        )
-                        conn.commit(); conn.close()
-                        st.warning("Pasif edildi."); st.rerun()
-                with c3:
-                    if st.button("🚫 Engelle", use_container_width=True):
-                        conn = get_connection()
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "UPDATE wellness_users SET durum='engelli' WHERE id=%s", (uid,)
-                        )
-                        conn.commit(); conn.close()
-                        st.error("Engellendi."); st.rerun()
-                with c4:
-                    if st.button("👑 Admin Yap", use_container_width=True):
-                        conn = get_connection()
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "UPDATE wellness_users SET rol='admin' WHERE id=%s", (uid,)
-                        )
-                        conn.commit(); conn.close()
-                        st.success("Admin yapıldı."); st.rerun()
-        except Exception as e:
-            st.error(f"Hata: {e}")
+        if st.session_state.aktif_kullanici_id:
+            _kullanici_detay_goster(st.session_state.aktif_kullanici_id)
+        else:
+            _tum_uyeler_listesi()
 
     # ── TAB 4: ANALİZ KUYRUĞU ────────────────────────────────────────────────
     with tab4:
@@ -523,6 +460,243 @@ outlook.com → Güvenlik → İki adımlı doğrulama (açık olmalı) → Uygu
                 """)
         except Exception as e:
             st.error(f"Hata: {e}")
+
+
+def _durum_guncelle(uid, durum):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE wellness_users SET durum=%s WHERE id=%s", (durum, uid))
+    conn.commit(); cursor.close(); conn.close()
+
+
+def _tum_uyeler_listesi():
+    """Tüm üyeleri tıklanabilir kart listesi olarak gösterir."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        c1, c2, c3 = st.columns([3, 1, 1])
+        with c1:
+            arama = st.text_input("🔍 İsim veya e-posta ara", key="uye_arama", placeholder="Ada...")
+        with c2:
+            filtre = st.selectbox("Durum", ["Tümü","aktif","beklemede","pasif","engelli"], key="uye_filtre")
+        with c3:
+            rol_f = st.selectbox("Rol", ["Tümü","user","admin"], key="uye_rol")
+
+        where, params = [], []
+        if arama:
+            where.append("(u.ad_soyad LIKE %s OR u.email LIKE %s)")
+            params.extend([f"%{arama}%", f"%{arama}%"])
+        if filtre != "Tümü":
+            where.append("u.durum=%s"); params.append(filtre)
+        if rol_f != "Tümü":
+            where.append("u.rol=%s"); params.append(rol_f)
+        ws = "WHERE " + " AND ".join(where) if where else ""
+
+        cursor.execute(f"""
+            SELECT u.id, u.ad_soyad, u.email, u.durum, u.rol, u.kayit_tarihi,
+                   COUNT(DISTINCT f.id) AS form_sayi,
+                   COUNT(DISTINCT a.id) AS analiz_sayi
+            FROM wellness_users u
+            LEFT JOIN wellness_forms    f ON f.user_id = u.id
+            LEFT JOIN wellness_analyses a ON a.user_id = u.id
+            {ws}
+            GROUP BY u.id
+            ORDER BY u.kayit_tarihi DESC
+        """, params)
+        users = cursor.fetchall()
+        cursor.close(); conn.close()
+
+        if not users:
+            st.info("Üye bulunamadı.")
+            return
+
+        st.caption(f"**{len(users)}** üye listeleniyor")
+        st.divider()
+
+        durum_renk_map = {
+            "aktif":"#3fb950", "beklemede":"#d4a847",
+            "pasif":"#7d8590", "engelli":"#f85149"
+        }
+        durum_icon_map = {
+            "aktif":"✅", "beklemede":"⏳", "pasif":"⏸️", "engelli":"🚫"
+        }
+
+        for u in users:
+            tarih = str(u["kayit_tarihi"])[:10]
+            renk  = durum_renk_map.get(u["durum"], "#7d8590")
+            icon  = durum_icon_map.get(u["durum"], "❓")
+
+            col1, col2, col3, col4, col5 = st.columns([3, 1.5, 1, 1, 1])
+            with col1:
+                rol_badge = ' <span style="color:#d4a847;font-size:11px">👑 Admin</span>' if u["rol"]=="admin" else ""
+                st.markdown(f"""
+<div style="padding:4px 0">
+  <span style="font-size:14px;font-weight:600;color:#e6edf3">{u['ad_soyad']}</span>{rol_badge}
+  <br><span style="font-size:12px;color:#7d8590">{u['email']}</span>
+  <br><span style="font-size:11px;color:#484f58">📅 {tarih} · 📋 {u['form_sayi']} form · 🔬 {u['analiz_sayi']} analiz</span>
+</div>""", unsafe_allow_html=True)
+            with col2:
+                st.markdown(f"""
+<span style="border:1px solid {renk};color:{renk};font-size:11px;font-weight:600;
+             padding:3px 10px;border-radius:20px">{icon} {u['durum']}</span>
+""", unsafe_allow_html=True)
+            with col3:
+                if u["durum"] != "aktif" and st.button("✅", key=f"uye_aktif_{u['id']}", help="Aktif et"):
+                    _durum_guncelle(u["id"], "aktif")
+                    kayit_onay_bildirimi(u["id"], u["ad_soyad"], u["email"])
+                    st.rerun()
+            with col4:
+                if u["durum"] == "aktif" and st.button("⏸️", key=f"uye_pasif_{u['id']}", help="Pasif et"):
+                    _durum_guncelle(u["id"], "pasif")
+                    st.rerun()
+            with col5:
+                if st.button("👁 Detay", key=f"uye_detay_{u['id']}", use_container_width=True, type="primary"):
+                    st.session_state.aktif_kullanici_id = u["id"]
+                    st.rerun()
+
+            st.markdown("<hr style='border-color:#21262d;margin:4px 0'>", unsafe_allow_html=True)
+
+    except Exception as e:
+        st.error(f"Hata: {e}")
+
+
+def _kullanici_detay_goster(uid: int):
+    """Seçilen kullanıcının profil + analizlerini detay sayfasında gösterir."""
+    if st.button("← Üye Listesine Dön", use_container_width=False):
+        st.session_state.aktif_kullanici_id = None
+        st.rerun()
+
+    st.divider()
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Kullanıcı bilgileri
+        cursor.execute("SELECT * FROM wellness_users WHERE id=%s", (uid,))
+        u = cursor.fetchone()
+        cursor.close(); conn.close()
+
+        if not u:
+            st.warning("Kullanıcı bulunamadı.")
+            return
+
+        # ── PROFİL KARTI ─────────────────────────────────────────────────────
+        durum_renk_map = {
+            "aktif":"#3fb950","beklemede":"#d4a847",
+            "pasif":"#7d8590","engelli":"#f85149"
+        }
+        renk = durum_renk_map.get(u["durum"],"#7d8590")
+
+        st.markdown(f"""
+<div style="background:#161b22;border:1px solid #30363d;border-radius:14px;padding:20px 24px;margin-bottom:16px">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+    <div>
+      <div style="font-size:22px;font-weight:700;color:#e6edf3">{u['ad_soyad']}
+        {'<span style="font-size:13px;color:#d4a847;margin-left:8px">👑 Admin</span>' if u['rol']=='admin' else ''}
+      </div>
+      <div style="font-size:14px;color:#7d8590;margin-top:4px">{u['email']}</div>
+      <div style="margin-top:10px">
+        <span style="border:1px solid {renk};color:{renk};font-size:12px;font-weight:600;padding:3px 12px;border-radius:20px">
+          {u['durum']}
+        </span>
+        <span style="font-size:12px;color:#484f58;margin-left:12px">
+          📅 Kayıt: {str(u['kayit_tarihi'])[:10]}
+        </span>
+        {f'<span style="font-size:12px;color:#484f58;margin-left:12px">✅ Onay: {str(u["onay_tarihi"])[:10]}</span>' if u.get("onay_tarihi") else ''}
+      </div>
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+        # ── HIZLI İŞLEMLER ────────────────────────────────────────────────────
+        st.markdown("**Kullanıcı İşlemleri**")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            if u["durum"] != "aktif" and st.button("✅ Aktif Et", use_container_width=True, type="primary"):
+                _durum_guncelle(uid, "aktif")
+                kayit_onay_bildirimi(uid, u["ad_soyad"], u["email"])
+                st.success("Aktif edildi."); st.rerun()
+        with c2:
+            if u["durum"] == "aktif" and st.button("⏸️ Pasif Et", use_container_width=True):
+                _durum_guncelle(uid, "pasif")
+                st.warning("Pasif edildi."); st.rerun()
+        with c3:
+            if u["durum"] != "engelli" and st.button("🚫 Engelle", use_container_width=True):
+                _durum_guncelle(uid, "engelli")
+                st.error("Engellendi."); st.rerun()
+        with c4:
+            if u["rol"] != "admin" and st.button("👑 Admin Yap", use_container_width=True):
+                conn2 = get_connection()
+                cur2 = conn2.cursor()
+                cur2.execute("UPDATE wellness_users SET rol='admin' WHERE id=%s", (uid,))
+                conn2.commit(); cur2.close(); conn2.close()
+                st.success("Admin yapıldı."); st.rerun()
+
+        if u.get("admin_notu"):
+            st.info(f"📝 Admin notu: {u['admin_notu']}")
+
+        st.divider()
+
+        # ── KULLANICININ ANALİZLERİ ────────────────────────────────────────────
+        st.markdown("#### 🔬 Analizler")
+
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT a.id, a.durum, a.olusturma_tarihi, a.gonderim_tarihi,
+                   analiz_json IS NOT NULL AS json_var,
+                   LEFT(COALESCE(a.admin_duzenleme, a.analiz_metni), 100) AS ozet
+            FROM wellness_analyses a
+            WHERE a.user_id = %s
+            ORDER BY a.olusturma_tarihi DESC
+        """, (uid,))
+        analizler = cursor.fetchall()
+        cursor.close(); conn.close()
+
+        if not analizler:
+            st.info("Bu kullanıcıya ait analiz yok.")
+        else:
+            durum_icon = {"taslak":"📝","admin_inceleme":"👁️",
+                         "onaylandi":"✅","kullaniciya_gonderildi":"📨","reddedildi":"❌"}
+            renk_map   = {"taslak":"#58a6ff","admin_inceleme":"#d4a847",
+                         "onaylandi":"#3fb950","kullaniciya_gonderildi":"#3fb950","reddedildi":"#f85149"}
+
+            for a in analizler:
+                tarih  = str(a["olusturma_tarihi"])[:16]
+                gonder = str(a["gonderim_tarihi"])[:16] if a["gonderim_tarihi"] else "—"
+                icon   = durum_icon.get(a["durum"],"❓")
+                ar     = renk_map.get(a["durum"],"#7d8590")
+                jbadge = "🟢" if a["json_var"] else "🔴"
+
+                c1, c2, c3, c4 = st.columns([4, 2, 0.5, 1])
+                with c1:
+                    st.markdown(f"""
+<div style="padding:4px 0">
+  <span style="font-size:13px;color:#e6edf3">{str(a.get('ozet',''))[:80]}...</span>
+  <br><span style="font-size:11px;color:#484f58">📅 {tarih} · 📨 {gonder}</span>
+</div>""", unsafe_allow_html=True)
+                with c2:
+                    st.markdown(f"""
+<span style="border:1px solid {ar};color:{ar};font-size:11px;
+             padding:3px 10px;border-radius:20px">{icon} {a['durum'].replace('_',' ')}</span>
+""", unsafe_allow_html=True)
+                with c3:
+                    st.caption(jbadge)
+                with c4:
+                    if st.button("Görüntüle", key=f"kdet_analiz_{a['id']}", use_container_width=True, type="primary"):
+                        st.session_state.aktif_analiz_id = a["id"]
+                        st.session_state.admin_menu = "tum_analizler"
+                        st.rerun()
+
+                st.markdown("<hr style='border-color:#21262d;margin:4px 0'>", unsafe_allow_html=True)
+
+    except Exception as e:
+        st.error(f"Hata: {e}")
+        import traceback
+        st.code(traceback.format_exc())
 
 
 def _tum_analizler_listesi():
