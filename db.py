@@ -5,15 +5,23 @@ import streamlit as st
 
 def get_connection():
     cfg = st.secrets["mysql"]
-    return mysql.connector.connect(
+    conn = mysql.connector.connect(
         host=cfg["host"],
         database=cfg["database"],
         user=cfg["user"],
         password=cfg["password"],
         port=int(cfg.get("port", 3306)),
         connection_timeout=15,
-        autocommit=False
+        autocommit=False,
+        charset="utf8mb4",
+        use_unicode=True,
     )
+    # Büyük metinlerin kesilmemesi için max_allowed_packet artır
+    cursor = conn.cursor()
+    cursor.execute("SET SESSION max_allowed_packet=67108864")  # 64MB
+    cursor.execute("SET NAMES utf8mb4")
+    cursor.close()
+    return conn
 
 
 def init_db():

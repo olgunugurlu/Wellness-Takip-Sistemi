@@ -145,12 +145,17 @@ def get_user_analyses():
 
 def get_analiz_metni(analiz_id:int) -> str | None:
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(dictionary=True, buffered=True)
     cursor.execute("""
         SELECT COALESCE(admin_duzenleme, analiz_metni) AS metin, durum
         FROM wellness_analyses WHERE id=%s AND user_id=%s
     """, (analiz_id, st.session_state.user_id))
     row = cursor.fetchone()
+    # Metni tam oku — büyük LONGTEXT için güvenli okuma
+    if row and row.get("metin"):
+        metin = row["metin"]
+        if isinstance(metin, (bytes, bytearray)):
+            row["metin"] = metin.decode("utf-8", errors="replace")
     cursor.close(); conn.close()
     return row
 

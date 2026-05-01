@@ -336,12 +336,18 @@ def show_admin_panel():
                         )
                         form_row = cursor.fetchone()
 
-                        # Analizi getir
+                        # Analizi getir — buffered=True büyük metinler için
                         cursor.execute("""
                             SELECT id, analiz_metni, admin_duzenleme
                             FROM wellness_analyses WHERE id=%s
                         """, (item["id"],))
                         analiz_row = cursor.fetchone()
+                        # bytes ise decode et
+                        if analiz_row:
+                            for alan in ["analiz_metni", "admin_duzenleme"]:
+                                v = analiz_row.get(alan)
+                                if v and isinstance(v, (bytes, bytearray)):
+                                    analiz_row[alan] = v.decode("utf-8", errors="replace")
                         cursor.close(); conn.close()
 
                         # Form verisi özeti
@@ -494,7 +500,10 @@ def show_admin_panel():
                     row = cursor.fetchone()
                     conn.close()
                     if row:
-                        _render_metin(row["metin"])
+                        metin = row["metin"]
+                        if isinstance(metin, (bytes, bytearray)):
+                            metin = metin.decode("utf-8", errors="replace")
+                        _render_metin(metin)
                     else:
                         st.warning("Bulunamadı.")
             else:
