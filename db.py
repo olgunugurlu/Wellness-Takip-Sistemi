@@ -63,6 +63,7 @@ def init_db():
             form_id          INT NOT NULL,
             user_id          INT NOT NULL,
             analiz_metni     LONGTEXT NOT NULL,
+            analiz_json      LONGTEXT NULL,
             admin_duzenleme  LONGTEXT NULL,
             durum            ENUM('taslak','admin_inceleme','onaylandi','kullaniciya_gonderildi') DEFAULT 'taslak',
             admin_id         INT NULL,
@@ -73,6 +74,14 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES wellness_users(id)  ON DELETE CASCADE
         )
     """)
+    # Mevcut tabloya kolon ekle (yoksa)
+    try:
+        cursor.execute("""
+            ALTER TABLE wellness_analyses
+            ADD COLUMN IF NOT EXISTS analiz_json LONGTEXT NULL AFTER analiz_metni
+        """)
+    except Exception:
+        pass
 
     # ── BİLDİRİMLER ──────────────────────────────────────────────────────────
     cursor.execute("""

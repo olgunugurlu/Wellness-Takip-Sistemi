@@ -113,15 +113,24 @@ def _metin_temizle(metin: str) -> str:
 
 
 def save_analysis_draft(form_id:int, analiz_metni:str) -> int:
-    # Sadece analiz metnini kaydet — JSON bloğunu çıkar
+    """Analiz metnini ve JSON yapısını ayrı kolonlara kaydeder."""
+    import re as _re
+    # JSON bloğunu bul ve ayır
+    json_str = None
+    json_match = _re.search(r'```json\s*(.*?)\s*```', analiz_metni, _re.DOTALL)
+    if json_match:
+        json_str = json_match.group(1).strip()
+
+    # Analiz metnini temizle
     temiz_metin = _metin_temizle(analiz_metni)
+
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO wellness_analyses
-            (form_id, user_id, analiz_metni, durum)
-        VALUES (%s,%s,%s,'taslak')
-    """, (form_id, st.session_state.user_id, temiz_metin))
+            (form_id, user_id, analiz_metni, analiz_json, durum)
+        VALUES (%s,%s,%s,%s,'taslak')
+    """, (form_id, st.session_state.user_id, temiz_metin, json_str))
     analiz_id = cursor.lastrowid
     conn.commit(); cursor.close(); conn.close()
     return analiz_id
@@ -143,19 +152,21 @@ def get_user_analyses():
     return rows
 
 
-def get_analiz_metni(analiz_id:int) -> str | None:
+def get_analiz_metni(analiz_id:int) -> dict | None:
+    """Analiz metnini ve JSON yapısını veritabanından okur."""
     conn = get_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
     cursor.execute("""
-        SELECT COALESCE(admin_duzenleme, analiz_metni) AS metin, durum
+        SELECT COALESCE(admin_duzenleme, analiz_metni) AS metin,
+               analiz_json, durum
         FROM wellness_analyses WHERE id=%s AND user_id=%s
     """, (analiz_id, st.session_state.user_id))
     row = cursor.fetchone()
-    # Metni tam oku — büyük LONGTEXT için güvenli okuma
-    if row and row.get("metin"):
-        metin = row["metin"]
-        if isinstance(metin, (bytes, bytearray)):
-            row["metin"] = metin.decode("utf-8", errors="replace")
+    if row:
+        for alan in ["metin", "analiz_json"]:
+            v = row.get(alan)
+            if v and isinstance(v, (bytes, bytearray)):
+                row[alan] = v.decode("utf-8", errors="replace")
     cursor.close(); conn.close()
     return row
 
@@ -349,7 +360,22 @@ else:
                 <h1>Kişisel Planınız</h1>
             </div>
             """, unsafe_allow_html=True)
-            analiz_metni, takviye_data = parse_response(row["metin"])
+            # Önce veritabanındaki ayrı JSON kolonuna bak
+            takviye_data = None
+            if row.get("analiz_json"):
+                try:
+                    raw_json = json.loads(row["analiz_json"])
+                    from claude_service import _normalize_json
+                    takviye_data = _normalize_json(raw_json)
+                except Exception:
+                    takviye_data = None
+
+            # JSON kolonu yoksa metinden parse etmeyi dene
+            if takviye_data is None:
+                analiz_metni, takviye_data = parse_response(row["metin"])
+            else:
+                analiz_metni = row["metin"]
+
             render_analiz_metni(analiz_metni)
             st.divider()
             if takviye_data:

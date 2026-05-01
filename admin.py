@@ -338,7 +338,7 @@ def show_admin_panel():
 
                         # Analizi getir — buffered=True büyük metinler için
                         cursor.execute("""
-                            SELECT id, analiz_metni, admin_duzenleme
+                            SELECT id, analiz_metni, analiz_json, admin_duzenleme
                             FROM wellness_analyses WHERE id=%s
                         """, (item["id"],))
                         analiz_row = cursor.fetchone()
