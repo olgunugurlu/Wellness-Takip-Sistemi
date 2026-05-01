@@ -16,9 +16,7 @@ def get_connection():
         charset="utf8mb4",
         use_unicode=True,
     )
-    # Büyük metinlerin kesilmemesi için max_allowed_packet artır
     cursor = conn.cursor()
-    cursor.execute("SET SESSION max_allowed_packet=67108864")  # 64MB
     cursor.execute("SET NAMES utf8mb4")
     cursor.close()
     return conn
