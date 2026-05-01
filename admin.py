@@ -463,116 +463,13 @@ def show_admin_panel():
 
     # ── TAB 5: TÜM ANALİZLER ─────────────────────────────────────────────────
     with tab5:
-        try:
-            conn = get_connection()
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute("""
-                SELECT a.id, u.ad_soyad, u.email, a.durum,
-                       a.olusturma_tarihi, a.gonderim_tarihi,
-                       LEFT(COALESCE(a.admin_duzenleme, a.analiz_metni), 100) AS ozet
-                FROM wellness_analyses a
-                JOIN wellness_users u ON u.id = a.user_id
-                ORDER BY a.olusturma_tarihi DESC
-                LIMIT 50
-            """)
-            rows = cursor.fetchall()
-            cursor.close(); conn.close()
+        if "aktif_analiz_id" not in st.session_state:
+            st.session_state.aktif_analiz_id = None
 
-            if rows:
-                import pandas as pd
-                df = pd.DataFrame(rows)
-                df["durum"] = df["durum"].apply(lambda x: f"{durum_renk(x)} {x}")
-                df["olusturma_tarihi"] = df["olusturma_tarihi"].astype(str).str[:16]
-                df["gonderim_tarihi"] = df["gonderim_tarihi"].astype(str).str[:16]
-                df.columns = ["ID","Kullanıcı","E-posta","Durum",
-                              "Oluşturma","Gönderim","Özet"]
-                st.dataframe(df, use_container_width=True, hide_index=True)
-
-                st.divider()
-                aid = st.number_input("Analiz ID (detay)", min_value=1, step=1)
-                if st.button("🔍 Analizi Göster"):
-                    conn = get_connection()
-                    cursor = conn.cursor(dictionary=True, buffered=True)
-                    cursor.execute("""
-                        SELECT COALESCE(admin_duzenleme, analiz_metni) AS metin,
-                               analiz_json
-                        FROM wellness_analyses WHERE id=%s
-                    """, (aid,))
-                    row = cursor.fetchone()
-                    conn.close()
-                    if row:
-                        metin = row.get("metin", "")
-                        analiz_json_str = row.get("analiz_json")
-                        if isinstance(metin, (bytes, bytearray)):
-                            metin = metin.decode("utf-8", errors="replace")
-                        if analiz_json_str and isinstance(analiz_json_str, (bytes, bytearray)):
-                            analiz_json_str = analiz_json_str.decode("utf-8", errors="replace")
-
-                        # Analiz metnini göster
-                        _render_metin(metin)
-                        st.divider()
-
-                        # Takviye kartlarını göster
-                        takviye_data = None
-                        if analiz_json_str:
-                            try:
-                                from claude_service import _normalize_json
-                                takviye_data = _normalize_json(json.loads(analiz_json_str))
-                            except Exception as e:
-                                st.warning(f"JSON parse hatası: {e}")
-
-                        if takviye_data is None:
-                            # Metinden parse etmeyi dene
-                            try:
-                                from claude_service import parse_response
-                                _, takviye_data = parse_response(metin)
-                            except Exception:
-                                pass
-
-                        if takviye_data:
-                            from claude_service import render_supplement_cards
-                            render_supplement_cards(takviye_data)
-                        else:
-                            st.info("Takviye kartları bulunamadı.")
-
-                        # PDF indirme butonu
-                        st.divider()
-                        try:
-                            from pdf_export import analiz_pdf_olustur
-                            # Kullanıcı adını bul
-                            conn2 = get_connection()
-                            cur2 = conn2.cursor(dictionary=True)
-                            cur2.execute("""
-                                SELECT u.ad_soyad FROM wellness_analyses a
-                                JOIN wellness_users u ON u.id = a.user_id
-                                WHERE a.id = %s
-                            """, (aid,))
-                            ur = cur2.fetchone()
-                            cur2.close(); conn2.close()
-                            kullanici_adi = ur["ad_soyad"] if ur else "Kullanici"
-
-                            pdf_bytes = analiz_pdf_olustur(
-                                analiz_metni=metin,
-                                analiz_json_str=analiz_json_str,
-                                kullanici_adi=kullanici_adi,
-                            )
-                            dosya_adi = f"wellness_{kullanici_adi.replace(' ','_').lower()}_{aid}.pdf"
-                            st.download_button(
-                                label="📄 PDF Olarak İndir",
-                                data=pdf_bytes,
-                                file_name=dosya_adi,
-                                mime="application/pdf",
-                                use_container_width=True,
-                                type="primary",
-                            )
-                        except Exception as e:
-                            st.error(f"PDF oluşturulamadı: {e}")
-                    else:
-                        st.warning("Bulunamadı.")
-            else:
-                st.info("Henüz analiz yok.")
-        except Exception as e:
-            st.error(f"Hata: {e}")
+        if st.session_state.aktif_analiz_id:
+            _analiz_detay_goster(st.session_state.aktif_analiz_id)
+        else:
+            _tum_analizler_listesi()
 
 
     # ── TAB 6: E-POSTA TEST ──────────────────────────────────────────────────
@@ -626,6 +523,203 @@ outlook.com → Güvenlik → İki adımlı doğrulama (açık olmalı) → Uygu
                 """)
         except Exception as e:
             st.error(f"Hata: {e}")
+
+
+def _tum_analizler_listesi():
+    """Tüm analizleri tıklanabilir kart listesi olarak gösterir."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Filtre ve arama
+        c1, c2, c3 = st.columns([3, 1, 1])
+        with c1:
+            arama = st.text_input("🔍 Kullanıcı ara", placeholder="İsim veya e-posta...", key="analiz_arama")
+        with c2:
+            filtre = st.selectbox("Durum", ["Tümü","taslak","admin_inceleme",
+                                            "kullaniciya_gonderildi","reddedildi"],
+                                  key="analiz_filtre")
+        with c3:
+            limit = st.selectbox("Göster", [10, 25, 50, 100], key="analiz_limit")
+
+        # Sorgu
+        where = []
+        params = []
+        if arama:
+            where.append("(u.ad_soyad LIKE %s OR u.email LIKE %s)")
+            params.extend([f"%{arama}%", f"%{arama}%"])
+        if filtre != "Tümü":
+            where.append("a.durum = %s")
+            params.append(filtre)
+        where_sql = "WHERE " + " AND ".join(where) if where else ""
+
+        cursor.execute(f"""
+            SELECT a.id, u.ad_soyad, u.email, a.durum,
+                   a.olusturma_tarihi, a.gonderim_tarihi,
+                   analiz_json IS NOT NULL AS json_var,
+                   LEFT(COALESCE(a.admin_duzenleme, a.analiz_metni), 80) AS ozet
+            FROM wellness_analyses a
+            JOIN wellness_users u ON u.id = a.user_id
+            {where_sql}
+            ORDER BY a.olusturma_tarihi DESC
+            LIMIT %s
+        """, params + [limit])
+        rows = cursor.fetchall()
+        cursor.close(); conn.close()
+
+        if not rows:
+            st.info("Analiz bulunamadı.")
+            return
+
+        st.caption(f"**{len(rows)}** analiz listeleniyor")
+        st.divider()
+
+        durum_icon = {
+            "taslak": "📝",
+            "admin_inceleme": "👁️",
+            "onaylandi": "✅",
+            "kullaniciya_gonderildi": "📨",
+            "reddedildi": "❌",
+        }
+        durum_renk_map = {
+            "taslak": "#58a6ff",
+            "admin_inceleme": "#d4a847",
+            "onaylandi": "#3fb950",
+            "kullaniciya_gonderildi": "#3fb950",
+            "reddedildi": "#f85149",
+        }
+
+        for row in rows:
+            tarih = str(row["olusturma_tarihi"])[:16]
+            gonderim = str(row["gonderim_tarihi"])[:16] if row["gonderim_tarihi"] else "—"
+            durum = row["durum"]
+            icon = durum_icon.get(durum, "❓")
+            renk = durum_renk_map.get(durum, "#7d8590")
+            json_badge = "🟢 JSON" if row["json_var"] else "🔴 JSON"
+
+            col1, col2, col3, col4, col5 = st.columns([3, 2, 1.5, 1, 1])
+            with col1:
+                st.markdown(f"""
+<div style="padding:4px 0">
+  <span style="font-size:14px;font-weight:600;color:#e6edf3">{row['ad_soyad']}</span>
+  <span style="font-size:12px;color:#7d8590;margin-left:8px">{row['email']}</span>
+  <br><span style="font-size:11px;color:#484f58">{str(row.get('ozet',''))[:70]}...</span>
+</div>
+""", unsafe_allow_html=True)
+            with col2:
+                st.markdown(f"""
+<div style="padding:4px 0;font-size:12px;color:#7d8590">
+  📅 {tarih}<br>📨 {gonderim}
+</div>
+""", unsafe_allow_html=True)
+            with col3:
+                st.markdown(f"""
+<span style="background:rgba(0,0,0,.2);border:1px solid {renk};color:{renk};
+             font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px">
+  {icon} {durum.replace('_',' ')}
+</span>
+""", unsafe_allow_html=True)
+            with col4:
+                st.caption(json_badge)
+            with col5:
+                if st.button("Görüntüle", key=f"goruntule5_{row['id']}", use_container_width=True, type="primary"):
+                    st.session_state.aktif_analiz_id = row["id"]
+                    st.rerun()
+
+            st.markdown("<hr style='border-color:#21262d;margin:4px 0'>", unsafe_allow_html=True)
+
+    except Exception as e:
+        st.error(f"Hata: {e}")
+
+
+def _analiz_detay_goster(aid: int):
+    """Seçilen analizi tam ekran detay olarak gösterir."""
+    if st.button("← Listeye Dön", use_container_width=False):
+        st.session_state.aktif_analiz_id = None
+        st.rerun()
+
+    st.divider()
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True, buffered=True)
+        cursor.execute("""
+            SELECT a.id, COALESCE(a.admin_duzenleme, a.analiz_metni) AS metin,
+                   a.analiz_json, a.durum, u.ad_soyad, u.email
+            FROM wellness_analyses a
+            JOIN wellness_users u ON u.id = a.user_id
+            WHERE a.id = %s
+        """, (aid,))
+        row = cursor.fetchone()
+        cursor.close(); conn.close()
+
+        if not row:
+            st.warning("Analiz bulunamadı.")
+            return
+
+        metin = row.get("metin","") or ""
+        analiz_json_str = row.get("analiz_json")
+        kullanici_adi = row.get("ad_soyad","Kullanici")
+
+        if isinstance(metin, (bytes, bytearray)):
+            metin = metin.decode("utf-8", errors="replace")
+        if analiz_json_str and isinstance(analiz_json_str, (bytes, bytearray)):
+            analiz_json_str = analiz_json_str.decode("utf-8", errors="replace")
+
+        # Başlık
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            st.markdown(f"### 👤 {kullanici_adi} — {row['email']}")
+            st.caption(f"Analiz ID: {aid} | Durum: {row['durum']}")
+        with c2:
+            # PDF butonu
+            try:
+                from pdf_export import analiz_pdf_olustur
+                pdf_bytes = analiz_pdf_olustur(
+                    analiz_metni=metin,
+                    analiz_json_str=analiz_json_str,
+                    kullanici_adi=kullanici_adi,
+                )
+                dosya_adi = f"wellness_{kullanici_adi.replace(' ','_').lower()}_{aid}.pdf"
+                st.download_button(
+                    label="📄 PDF İndir",
+                    data=pdf_bytes,
+                    file_name=dosya_adi,
+                    mime="application/pdf",
+                    use_container_width=True,
+                    type="primary",
+                )
+            except Exception as e:
+                st.error(f"PDF hatası: {e}")
+
+        st.divider()
+
+        # Analiz metni
+        _render_metin(metin)
+        st.divider()
+
+        # Takviye kartları
+        takviye_data = None
+        if analiz_json_str:
+            try:
+                from claude_service import _normalize_json
+                takviye_data = _normalize_json(json.loads(analiz_json_str))
+            except Exception:
+                pass
+        if takviye_data is None:
+            try:
+                from claude_service import parse_response
+                _, takviye_data = parse_response(metin)
+            except Exception:
+                pass
+        if takviye_data:
+            from claude_service import render_supplement_cards
+            render_supplement_cards(takviye_data)
+
+    except Exception as e:
+        st.error(f"Hata: {e}")
+        import traceback
+        st.code(traceback.format_exc())
 
 
 def _user_id_from_analiz(analiz_id: int) -> int | None:
