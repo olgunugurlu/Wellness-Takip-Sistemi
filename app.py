@@ -353,6 +353,11 @@ else:
     if st.session_state.page == "analiz_goruntule":
         analiz_id = st.session_state.goruntulenen_analiz_id
         row = get_analiz_metni(analiz_id)
+        # Debug: JSON kolonu var mı?
+        if row:
+            json_var = bool(row.get("analiz_json"))
+            json_uzunluk = len(row.get("analiz_json") or "")
+            st.caption(f"🔍 Debug: analiz_id={analiz_id} | json_var={json_var} | json_uzunluk={json_uzunluk}")
         if row:
             st.markdown("""
             <div class="hero">
@@ -360,26 +365,33 @@ else:
                 <h1>Kişisel Planınız</h1>
             </div>
             """, unsafe_allow_html=True)
-            # Önce veritabanındaki ayrı JSON kolonuna bak
+            # analiz_json kolonundan oku
             takviye_data = None
-            if row.get("analiz_json"):
+            analiz_metni = row.get("metin", "")
+
+            analiz_json_str = row.get("analiz_json")
+            if analiz_json_str:
                 try:
-                    raw_json = json.loads(row["analiz_json"])
+                    raw_json = json.loads(analiz_json_str)
                     from claude_service import _normalize_json
                     takviye_data = _normalize_json(raw_json)
-                except Exception:
+                except Exception as e:
+                    st.warning(f"JSON parse hatası: {e}")
                     takviye_data = None
 
-            # JSON kolonu yoksa metinden parse etmeyi dene
-            if takviye_data is None:
-                analiz_metni, takviye_data = parse_response(row["metin"])
-            else:
-                analiz_metni = row["metin"]
+            # analiz_json yoksa veya parse olmadıysa metinden dene
+            if takviye_data is None and analiz_metni:
+                try:
+                    _, takviye_data = parse_response(analiz_metni)
+                except Exception:
+                    takviye_data = None
 
             render_analiz_metni(analiz_metni)
             st.divider()
             if takviye_data:
                 render_supplement_cards(takviye_data)
+            else:
+                st.info("Takviye kartları yüklenemedi. Yeni bir analiz talebi oluşturun.")
             st.markdown(YASAL_UYARI_HTML, unsafe_allow_html=True)
             st.divider()
             c1, c2 = st.columns(2)
