@@ -12,6 +12,19 @@ from notifications import (
 )
 
 
+def _metin_temizle(metin: str) -> str:
+    """Kaydedilmeden önce JSON bloğunu ve BÖLÜM 2 başlığını metinden temizler."""
+    # ```json ... ``` bloğunu sil
+    metin = re.sub(r'```json.*?```', '', metin, flags=re.DOTALL)
+    # Düz ``` ... ``` bloğunu sil
+    metin = re.sub(r'```.*?```', '', metin, flags=re.DOTALL)
+    # BÖLÜM 2 başlığı ve sonrasını sil
+    metin = re.sub(r'##\s*BÖLÜM 2.*', '', metin, flags=re.DOTALL)
+    # Sondaki --- çizgilerini temizle
+    metin = re.sub(r'---\s*$', '', metin, flags=re.MULTILINE)
+    return metin.strip()
+
+
 def _render_metin(metin: str):
     """Uzun analiz metnini bölümlere ayırarak render eder."""
     # JSON bloğunu ve BÖLÜM 2 başlığını temizle
@@ -366,12 +379,13 @@ def show_admin_panel():
                                              use_container_width=True):
                                     conn = get_connection()
                                     cursor = conn.cursor()
+                                    temiz = _metin_temizle(duzenlenmis)
                                     cursor.execute("""
                                         UPDATE wellness_analyses
                                         SET admin_duzenleme=%s, durum='admin_inceleme',
                                             admin_id=%s
                                         WHERE id=%s
-                                    """, (duzenlenmis,
+                                    """, (temiz,
                                           st.session_state.user_id,
                                           item["id"]))
                                     conn.commit()
@@ -384,7 +398,7 @@ def show_admin_panel():
                                              key=f"gonder_{item['id']}",
                                              type="primary",
                                              use_container_width=True):
-                                    son_metin = duzenlenmis or mevcut
+                                    son_metin = _metin_temizle(duzenlenmis or mevcut)
                                     conn = get_connection()
                                     cursor = conn.cursor()
                                     cursor.execute("""

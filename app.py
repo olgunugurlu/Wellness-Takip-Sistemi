@@ -102,14 +102,26 @@ def save_form(form_data:dict) -> int:
     return form_id
 
 
+def _metin_temizle(metin: str) -> str:
+    """JSON bloğunu ve BÖLÜM 2 başlığını metinden temizler — sadece analiz metnini saklar."""
+    import re
+    metin = re.sub(r'```json.*?```', '', metin, flags=re.DOTALL)
+    metin = re.sub(r'```.*?```', '', metin, flags=re.DOTALL)
+    metin = re.sub(r'##\s*BÖLÜM 2.*', '', metin, flags=re.DOTALL)
+    metin = re.sub(r'---\s*$', '', metin, flags=re.MULTILINE)
+    return metin.strip()
+
+
 def save_analysis_draft(form_id:int, analiz_metni:str) -> int:
+    # Sadece analiz metnini kaydet — JSON bloğunu çıkar
+    temiz_metin = _metin_temizle(analiz_metni)
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO wellness_analyses
             (form_id, user_id, analiz_metni, durum)
         VALUES (%s,%s,%s,'taslak')
-    """, (form_id, st.session_state.user_id, analiz_metni))
+    """, (form_id, st.session_state.user_id, temiz_metin))
     analiz_id = cursor.lastrowid
     conn.commit(); cursor.close(); conn.close()
     return analiz_id
