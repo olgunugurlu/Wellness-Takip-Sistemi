@@ -192,7 +192,19 @@ Analiz metninin HEMEN arkasına, başka açıklama eklemeden şu JSON bloğunu y
       "reason": "Kısa gerekçe (1 cümle)",
       "dosage": "Doz miktarı",
       "timing": "sabah/öğle/akşam/gece",
-      "priority": "high/medium/low"
+      "priority": "high/medium/low",
+      "active_ingredient": "Aktif madde ve form (örn: Magnezyum Bisglisinat, %90 standardize ashwagandha)",
+      "mechanism": "Nasıl çalışır — 1-2 cümle biyokimyasal mekanizma",
+      "brands": [
+        {{
+          "name": "Marka Adı",
+          "product": "Ürün adı",
+          "why": "Neden öneriliyor — içerik kalitesi, sertifika, biyoyararlanım",
+          "price_range": "ekonomik/orta/premium",
+          "where": "nereden bulunur (eczane/online/iherb vb.)"
+        }}
+      ],
+      "caution": "Dikkat edilecek etkileşim veya durum (varsa)"
     }}
   ],
   "exercise_plan": {{
