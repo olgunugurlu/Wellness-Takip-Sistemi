@@ -214,45 +214,88 @@ Analiz metninin HEMEN arkasına, başka açıklama eklemeden şu JSON bloğunu y
 ```"""
 
 
+def _normalize_json(data: dict) -> dict:
+    """Eski JSON formatını (takviyeler/oncelik) yeni formata (supplements/priority) dönüştürür."""
+    # Zaten yeni format
+    if "supplements" in data:
+        return data
+
+    # Eski format dönüşümü
+    normalized = {}
+
+    # Eski takviye formatı → yeni
+    if "takviyeler" in data:
+        oncelik_map = {1: "high", 2: "medium", 3: "low"}
+        normalized["supplements"] = [
+            {
+                "name":     t.get("isim", ""),
+                "reason":   t.get("neden", ""),
+                "dosage":   t.get("doz", ""),
+                "timing":   t.get("zaman", ""),
+                "priority": oncelik_map.get(int(t.get("oncelik", 2)), "medium"),
+                "_marka":   t.get("marka_onerisi", ""),
+                "_sure":    t.get("sure", ""),
+            }
+            for t in data.get("takviyeler", [])
+        ]
+
+    # Eski günlük program → egzersiz planı yok, boş bırak
+    if "gunluk_program" not in data:
+        normalized["exercise_plan"] = {}
+
+    # Lab önerileri → priorities
+    lab = data.get("lab_onerileri", [])
+    if lab and "priorities" not in data:
+        normalized["priorities"] = lab
+
+    normalized["risk_level"] = "low"
+    normalized["risk_notes"] = data.get("uyari", "")
+
+    return {**data, **normalized}
+
+
 def parse_response(full_text: str) -> tuple:
     """Analiz metnini ve JSON verisini ayırır.
-    Farklı Claude çıktı formatlarını destekler."""
+    Hem eski hem yeni JSON formatını destekler."""
+
+    def _temizle_metin(metin: str) -> str:
+        metin = re.sub(r'##\s*BÖLÜM 2.*$', '', metin, flags=re.MULTILINE | re.DOTALL).strip()
+        metin = re.sub(r'---\s*$', '', metin, flags=re.MULTILINE).strip()
+        return metin
+
+    def _parse_json(json_str: str):
+        try:
+            data = json.loads(json_str)
+            return _normalize_json(data)
+        except json.JSONDecodeError:
+            return None
 
     # 1. Standart ```json ... ``` bloğu
     json_match = re.search(r'```json\s*(.*?)\s*```', full_text, re.DOTALL)
     if json_match:
-        analiz_metni = full_text[:json_match.start()].strip()
-        analiz_metni = re.sub(r'##\s*BÖLÜM 2.*$', '', analiz_metni, flags=re.MULTILINE | re.DOTALL).strip()
-        analiz_metni = re.sub(r'---\s*$', '', analiz_metni, flags=re.MULTILINE).strip()
-        try:
-            structured = json.loads(json_match.group(1))
-            return analiz_metni, structured
-        except json.JSONDecodeError:
-            pass
+        analiz_metni = _temizle_metin(full_text[:json_match.start()])
+        result = _parse_json(json_match.group(1))
+        if result:
+            return analiz_metni, result
 
     # 2. ``` ... ``` (json etiketi olmadan)
     json_match2 = re.search(r'```\s*(\{.*?\})\s*```', full_text, re.DOTALL)
     if json_match2:
-        analiz_metni = full_text[:json_match2.start()].strip()
-        analiz_metni = re.sub(r'##\s*BÖLÜM 2.*$', '', analiz_metni, flags=re.MULTILINE | re.DOTALL).strip()
-        try:
-            structured = json.loads(json_match2.group(1))
-            return analiz_metni, structured
-        except json.JSONDecodeError:
-            pass
+        analiz_metni = _temizle_metin(full_text[:json_match2.start()])
+        result = _parse_json(json_match2.group(1))
+        if result:
+            return analiz_metni, result
 
     # 3. BÖLÜM 2 başlığından sonra JSON ara
     bolum2 = re.search(r'##\s*BÖLÜM 2.*?$(.*)', full_text, re.DOTALL | re.MULTILINE)
     if bolum2:
         icerik = bolum2.group(1).strip()
-        analiz_metni = full_text[:bolum2.start()].strip()
+        analiz_metni = _temizle_metin(full_text[:bolum2.start()])
         obj_match = re.search(r'(\{.*\})', icerik, re.DOTALL)
         if obj_match:
-            try:
-                structured = json.loads(obj_match.group(1))
-                return analiz_metni, structured
-            except json.JSONDecodeError:
-                pass
+            result = _parse_json(obj_match.group(1))
+            if result:
+                return analiz_metni, result
 
     # 4. Temizle ve döndür
     temiz = re.sub(r'##\s*BÖLÜM 2.*', '', full_text, flags=re.DOTALL).strip()
@@ -313,6 +356,13 @@ def render_supplement_cards(structured: dict):
                 oncelik_label = {"high": "Yüksek Öncelik", "medium": "Orta Öncelik", "low": "Düşük Öncelik"}.get(priority, "")
                 zaman = s.get("timing", "").lower()
                 zaman_emoji = ZAMAN_EMOJIS.get(zaman, "⏰")
+                marka = s.get("_marka", s.get("marka_onerisi", ""))
+                sure  = s.get("_sure",  s.get("sure", ""))
+                ekstra_html = ""
+                if marka:
+                    ekstra_html += f'<div style="background:#0d1117;border-radius:8px;padding:8px 10px"><div style="font-size:10px;color:#7d8590;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Marka Önerisi</div><div style="font-size:12px;color:#58a6ff">{marka}</div></div>'
+                if sure:
+                    ekstra_html += f'<div style="background:#0d1117;border-radius:8px;padding:8px 10px"><div style="font-size:10px;color:#7d8590;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Kullanım Süresi</div><div style="font-size:12px;color:#3fb950">{sure}</div></div>'
 
                 st.markdown(f"""
 <div style="background:#161b22;border:1px solid #30363d;border-left:4px solid {renk};
@@ -332,6 +382,7 @@ def render_supplement_cards(structured: dict):
       <div style="font-size:10px;color:#7d8590;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Ne Zaman</div>
       <div style="font-size:13px;font-weight:600;color:#e6edf3">{zaman_emoji} {zaman.capitalize()}</div>
     </div>
+    {ekstra_html}
   </div>
 </div>
 """, unsafe_allow_html=True)
