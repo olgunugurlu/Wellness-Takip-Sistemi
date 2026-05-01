@@ -153,14 +153,22 @@ def get_user_analyses():
 
 
 def get_analiz_metni(analiz_id:int) -> dict | None:
-    """Analiz metnini ve JSON yapısını veritabanından okur."""
+    """Analiz metnini ve JSON yapısını veritabanından okur.
+    Admin tüm analizleri görebilir, kullanıcı sadece kendi analizini."""
     conn = get_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
-    cursor.execute("""
-        SELECT COALESCE(admin_duzenleme, analiz_metni) AS metin,
-               analiz_json, durum
-        FROM wellness_analyses WHERE id=%s AND user_id=%s
-    """, (analiz_id, st.session_state.user_id))
+    if st.session_state.get("user_rol") == "admin":
+        cursor.execute("""
+            SELECT COALESCE(admin_duzenleme, analiz_metni) AS metin,
+                   analiz_json, durum
+            FROM wellness_analyses WHERE id=%s
+        """, (analiz_id,))
+    else:
+        cursor.execute("""
+            SELECT COALESCE(admin_duzenleme, analiz_metni) AS metin,
+                   analiz_json, durum
+            FROM wellness_analyses WHERE id=%s AND user_id=%s
+        """, (analiz_id, st.session_state.user_id))
     row = cursor.fetchone()
     if row:
         for alan in ["metin", "analiz_json"]:
